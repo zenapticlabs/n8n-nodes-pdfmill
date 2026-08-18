@@ -51,6 +51,20 @@ module.exports = {
       files: ['./nodes/**/*.ts'],
       plugins: ['eslint-plugin-n8n-nodes-base'],
       extends: ['plugin:n8n-nodes-base/nodes'],
+      rules: {
+        // Stale-plugin vs. authoritative-scanner conflict. `eslint-plugin-n8n-nodes-base`
+        // (last release 1.16.7) predates n8n's `NodeConnectionTypes` enum: its
+        // `-inputs-wrong-regular-node` / `-outputs-wrong` rules hard-expect the string
+        // literal `['main']`. But the REAL verification gate — `@n8n/scan-community-package`,
+        // what the n8n team runs to list a node — enforces the newer `node-connection-type-literal`
+        // rule, which REQUIRES `[NodeConnectionTypes.Main]` and REJECTS the `['main']` literal.
+        // The two cannot both be satisfied. The scanner is authoritative (the published node
+        // passes it with the enum), so the source uses the enum and we disable the two stale
+        // literal-form rules here. Same documented-conflict pattern as the credentials
+        // `documentationUrl` disable above.
+        'n8n-nodes-base/node-class-description-inputs-wrong-regular-node': 'off',
+        'n8n-nodes-base/node-class-description-outputs-wrong': 'off',
+      },
     },
   ],
 };

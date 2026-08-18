@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Pdfmill } from '../nodes/Pdfmill/Pdfmill.node';
 import {
+	EXPECTED_CREDENTIALS_NAME,
 	FAKE_PDF,
 	FAKE_PNG,
 	decodeBinary,
@@ -23,7 +24,7 @@ function runExecute(ctx: import('n8n-workflow').IExecuteFunctions) {
 
 describe('Pdfmill.execute — Generate from Template (SC-005 happy path)', () => {
 	it('renders the invoice template to a PDF binary + metadata', async () => {
-		const { ctx, httpCalls } = makeExecuteFunctions({
+		const { ctx, httpCalls, credentialTypes } = makeExecuteFunctions({
 			items: [{ json: { invoiceNumber: 'INV-1' } }],
 			params: {
 				operation: 'template',
@@ -67,7 +68,10 @@ describe('Pdfmill.execute — Generate from Template (SC-005 happy path)', () =>
 		const call = httpCalls[0];
 		expect(call.method).toBe('POST');
 		expect(call.url).toBe('https://api.pdfmill.test/v1/render');
-		expect((call.headers as Record<string, string>)['x-api-key']).toBe('test-key');
+		// Auth rides n8n's credential system: the node asks for authenticated
+		// transport and never hand-sets the key header (creator-portal review).
+		expect(credentialTypes).toEqual([EXPECTED_CREDENTIALS_NAME]);
+		expect((call.headers as Record<string, string> | undefined)?.['x-api-key']).toBeUndefined();
 		expect(call.body).toMatchObject({ template: 'invoice', format: 'pdf', data: { invoiceNumber: 'INV-1' } });
 		expect((call.body as Record<string, unknown>).html).toBeUndefined();
 		// The document rides the response body, never a URL (binary-return only)
@@ -206,7 +210,7 @@ describe('Pdfmill.execute — multi-item batch', () => {
 
 describe('Pdfmill.methods.loadOptions.getTemplates (FR-004)', () => {
 	it('maps the engine template list to n8n dropdown options', async () => {
-		const { ctx, httpCalls } = makeLoadOptionsFunctions({
+		const { ctx, httpCalls, credentialTypes } = makeLoadOptionsFunctions({
 			httpRequest: () =>
 				templatesOkResponse([
 					{ id: 'invoice', name: 'Invoice' },
@@ -225,7 +229,8 @@ describe('Pdfmill.methods.loadOptions.getTemplates (FR-004)', () => {
 		const call = httpCalls[0] as IHttpRequestOptions;
 		expect(call.method).toBe('GET');
 		expect(call.url).toBe('https://api.pdfmill.test/v1/templates');
-		expect((call.headers as Record<string, string>)['x-api-key']).toBe('test-key');
+		expect(credentialTypes).toEqual([EXPECTED_CREDENTIALS_NAME]);
+		expect((call.headers as Record<string, string> | undefined)?.['x-api-key']).toBeUndefined();
 	});
 
 	it('surfaces an auth failure from loadOptions (bad key → clear error)', async () => {

@@ -40,7 +40,7 @@ npm install n8n-nodes-pdfmill
 
 Your key rides n8n's credential system: it is never a node parameter and never logged.
 
-## The node — PDFmill
+## The node — “Generate PDF”
 
 One node, two operations:
 

@@ -85,15 +85,37 @@ describe('error map — non-engine failures', () => {
 		expect((err as Error).message.length).toBeGreaterThan(0);
 	});
 
-	it('a missing API key → a NodeOperationError telling the user to fix the credential', async () => {
-		const { ctx } = makeExecuteFunctions({
-			credentials: { apiKey: '', baseUrl: 'https://api.pdfmill.test' },
+	it('an empty Base URL → a NodeOperationError before any engine call', async () => {
+		const { ctx, httpCalls } = makeExecuteFunctions({
+			credentials: { apiKey: 'test-key', baseUrl: '' },
 			params: templateParams,
 			httpRequest: () => renderOkResponse(FAKE_PDF),
 		});
 		const err = await capture(ctx);
 		expect(err).toBeInstanceOf(NodeOperationError);
 		expect((err as Error).message).toContain('MISSING_CREDENTIAL');
+		expect(httpCalls).toHaveLength(0); // failed fast, never hit the engine
+	});
+
+	/**
+	 * BEHAVIOUR CHANGE (n8n creator-portal review, v0.2.0 → next):
+	 * the node no longer reads the API key out of the credential, so it can no
+	 * longer pre-empt an empty key with a local MISSING_CREDENTIAL error. Auth is
+	 * the credential system's job; a missing/bad key is now the engine's 401,
+	 * which still surfaces as a legible named error (nothing swallowed).
+	 */
+	it('an empty API key is no longer judged locally — the engine 401 surfaces as UNAUTHORIZED', async () => {
+		const { ctx, credentialTypes } = makeExecuteFunctions({
+			credentials: { apiKey: '', baseUrl: 'https://api.pdfmill.test' },
+			params: templateParams,
+			httpRequest: () => engineErrorResponse('UNAUTHORIZED', 401, 'missing or invalid API key', 'req_401'),
+		});
+		const err = await capture(ctx);
+		expect(err).toBeInstanceOf(NodeApiError);
+		expect((err as Error).message).toContain('UNAUTHORIZED');
+		expect((err as Error).message).toContain('req_401');
+		// the request still went out through the authenticated helper
+		expect(credentialTypes).toEqual(['pdfmillApi']);
 	});
 
 	it('empty HTML on the HTML operation → a NodeOperationError before any engine call', async () => {

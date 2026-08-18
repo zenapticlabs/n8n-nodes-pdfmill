@@ -1,12 +1,18 @@
 /**
  * Unit-test harness (Constitution IV). The engine HTTP layer is MOCKED — we
- * stub `helpers.httpRequest` so both operations, loadOptions, binary output,
- * and the full error-map table run green WITHOUT a live engine (SC-002).
+ * stub `helpers.httpRequestWithAuthentication` so both operations, loadOptions,
+ * binary output, and the full error-map table run green WITHOUT a live engine
+ * (SC-002).
  *
  * The stub returns n8n's `returnFullResponse` shape `{ statusCode, headers,
- * body }` — exactly what the real `this.helpers.httpRequest(...)` yields — so
- * the client's real parsing/normalization/error-mapping is exercised; only the
- * transport is a double (the M1 renderer-double pattern).
+ * body }` — exactly what the real
+ * `this.helpers.httpRequestWithAuthentication(...)` yields — so the client's
+ * real parsing/normalization/error-mapping is exercised; only the transport is
+ * a double (the M1 renderer-double pattern).
+ *
+ * The unauthenticated `helpers.httpRequest` is deliberately installed as a
+ * THROWING guard: the node must authenticate through the credential system, so
+ * any regression back to a hand-rolled `x-api-key` header fails the suite.
  */
 import type {
 	IBinaryData,
@@ -36,6 +42,9 @@ export const FAKE_PNG = Buffer.from(
 
 export type FullResponse = { statusCode: number; headers: Record<string, unknown>; body: unknown };
 export type HttpStub = (options: IHttpRequestOptions) => Promise<FullResponse> | FullResponse | never;
+
+/** The credential type the node is expected to authenticate with. */
+export const EXPECTED_CREDENTIALS_NAME = 'pdfmillApi';
 
 /** Build a successful /v1/render response (binary body + engine metadata headers). */
 export function renderOkResponse(
@@ -84,6 +93,7 @@ export interface HarnessOptions {
 	params?: Record<string, unknown> | ((name: string, itemIndex: number) => unknown);
 	credentials?: IDataObject | null;
 	continueOnFail?: boolean;
+	/** Transport double. Installed behind `httpRequestWithAuthentication`. */
 	httpRequest: HttpStub;
 	node?: INode;
 }
@@ -98,9 +108,33 @@ function paramResolver(opts: HarnessOptions) {
 	};
 }
 
-function makeHelpers(opts: HarnessOptions, httpCalls: IHttpRequestOptions[]) {
+function makeHelpers(
+	opts: HarnessOptions,
+	httpCalls: IHttpRequestOptions[],
+	credentialTypes: string[],
+) {
 	return {
-		async httpRequest(options: IHttpRequestOptions): Promise<FullResponse> {
+		async httpRequest(_options: IHttpRequestOptions): Promise<never> {
+			throw new Error(
+				'helpers.httpRequest must not be used — the node must call httpRequestWithAuthentication',
+			);
+		},
+		async httpRequestWithAuthentication(
+			this: unknown,
+			credentialsType: string,
+			options: IHttpRequestOptions,
+		): Promise<FullResponse> {
+			// n8n's real helper calls `this.getCredentials()` / `this.getNode()`
+			// internally, so the node MUST invoke it as `.call(ctx, ...)`. Without
+			// this guard the suite passes even if the binding is dropped, and the
+			// failure only appears at runtime inside n8n.
+			const bound = this as { getCredentials?: unknown } | undefined;
+			if (typeof bound?.getCredentials !== 'function') {
+				throw new Error(
+					'httpRequestWithAuthentication must be invoked as .call(ctx, ...) — `this` was not the execution context',
+				);
+			}
+			credentialTypes.push(credentialsType);
 			httpCalls.push(options);
 			return opts.httpRequest(options);
 		},
@@ -120,8 +154,10 @@ function makeHelpers(opts: HarnessOptions, httpCalls: IHttpRequestOptions[]) {
 export function makeExecuteFunctions(opts: HarnessOptions): {
 	ctx: IExecuteFunctions;
 	httpCalls: IHttpRequestOptions[];
+	credentialTypes: string[];
 } {
 	const httpCalls: IHttpRequestOptions[] = [];
+	const credentialTypes: string[] = [];
 	const getParam = paramResolver(opts);
 	const ctx = {
 		getInputData: () => opts.items ?? [{ json: {} }],
@@ -133,17 +169,19 @@ export function makeExecuteFunctions(opts: HarnessOptions): {
 			if (opts.credentials === null) return {} as IDataObject;
 			return opts.credentials ?? DEFAULT_CREDENTIALS;
 		},
-		helpers: makeHelpers(opts, httpCalls),
+		helpers: makeHelpers(opts, httpCalls, credentialTypes),
 	} as unknown as IExecuteFunctions;
-	return { ctx, httpCalls };
+	return { ctx, httpCalls, credentialTypes };
 }
 
 /** Fake ILoadOptionsFunctions for the getTemplates loadOptions test. */
 export function makeLoadOptionsFunctions(opts: HarnessOptions): {
 	ctx: ILoadOptionsFunctions;
 	httpCalls: IHttpRequestOptions[];
+	credentialTypes: string[];
 } {
 	const httpCalls: IHttpRequestOptions[] = [];
+	const credentialTypes: string[] = [];
 	const ctx = {
 		getNode: () => opts.node ?? TEST_NODE,
 		getCurrentNodeParameter: () => undefined,
@@ -152,9 +190,9 @@ export function makeLoadOptionsFunctions(opts: HarnessOptions): {
 			if (opts.credentials === null) return {} as IDataObject;
 			return opts.credentials ?? DEFAULT_CREDENTIALS;
 		},
-		helpers: makeHelpers(opts, httpCalls),
+		helpers: makeHelpers(opts, httpCalls, credentialTypes),
 	} as unknown as ILoadOptionsFunctions;
-	return { ctx, httpCalls };
+	return { ctx, httpCalls, credentialTypes };
 }
 
 /** Decode a returned binary property back to raw bytes for assertions. */

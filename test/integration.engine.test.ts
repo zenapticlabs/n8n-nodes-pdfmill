@@ -3,8 +3,11 @@
  *
  * This drives the node's REAL execute()/loadOptions through its REAL
  * engineClient against a REAL running pdfmill engine over HTTP (global fetch
- * standing in for n8n's httpRequest, same returnFullResponse + arraybuffer +
- * ignore-status contract). A real render comes back as real PDF bytes.
+ * standing in for n8n's httpRequestWithAuthentication, same returnFullResponse
+ * + arraybuffer + ignore-status contract). The double also plays the part n8n
+ * itself plays in production: it applies the credential's `authenticate` rule
+ * (`x-api-key: {{$credentials.apiKey}}`), which the node no longer does and
+ * must not do. A real render comes back as real PDF bytes.
  *
  * It is GATED on env presence — skipped (with a printed reason) when no engine
  * is configured, exactly like the engine's DATABASE_URL / Chromium suites:
@@ -49,9 +52,21 @@ const TEST_NODE: INode = {
 	parameters: {},
 };
 
-/** Real httpRequest over fetch, matching n8n's returnFullResponse + ignoreHttpStatusErrors. */
-async function realHttpRequest(options: IHttpRequestOptions) {
+/**
+ * Real authenticated request over fetch, matching n8n's returnFullResponse +
+ * ignoreHttpStatusErrors. Stands in for `helpers.httpRequestWithAuthentication`
+ * and, like n8n, injects the credential's auth header itself.
+ */
+async function realHttpRequestWithAuthentication(
+	credentialsType: string,
+	options: IHttpRequestOptions,
+) {
+	if (credentialsType !== 'pdfmillApi') {
+		throw new Error(`unexpected credential type: ${credentialsType}`);
+	}
 	const headers: Record<string, string> = { ...((options.headers as Record<string, string>) ?? {}) };
+	// PdfmillApi.authenticate — applied by n8n in production, by us here.
+	headers['x-api-key'] = API_KEY as string;
 	if (options.json && options.body !== undefined) headers['content-type'] = 'application/json';
 	const res = await fetch(options.url, {
 		method: options.method ?? 'GET',
@@ -74,7 +89,12 @@ async function realHttpRequest(options: IHttpRequestOptions) {
 }
 
 const realHelpers = {
-	httpRequest: realHttpRequest,
+	httpRequestWithAuthentication: realHttpRequestWithAuthentication,
+	async httpRequest(_options: IHttpRequestOptions): Promise<never> {
+		throw new Error(
+			'helpers.httpRequest must not be used — the node must call httpRequestWithAuthentication',
+		);
+	},
 	async prepareBinaryData(buffer: Buffer, fileName?: string, mimeType?: string): Promise<IBinaryData> {
 		return {
 			data: Buffer.from(buffer).toString('base64'),
@@ -91,7 +111,8 @@ function execCtx(params: Record<string, unknown>): IExecuteFunctions {
 		continueOnFail: () => false,
 		getNodeParameter: (name: string, _i: number, fallback?: unknown) =>
 			name in params ? params[name] : fallback,
-		getCredentials: async () => ({ apiKey: API_KEY, baseUrl: ENGINE_URL }),
+		// baseUrl is all the node reads; the key is the credential system's job.
+		getCredentials: async () => ({ baseUrl: ENGINE_URL }),
 		helpers: realHelpers,
 	} as unknown as IExecuteFunctions;
 }
@@ -99,7 +120,7 @@ function execCtx(params: Record<string, unknown>): IExecuteFunctions {
 function loadCtx(): ILoadOptionsFunctions {
 	return {
 		getNode: () => TEST_NODE,
-		getCredentials: async () => ({ apiKey: API_KEY, baseUrl: ENGINE_URL }),
+		getCredentials: async () => ({ baseUrl: ENGINE_URL }),
 		helpers: realHelpers,
 	} as unknown as ILoadOptionsFunctions;
 }

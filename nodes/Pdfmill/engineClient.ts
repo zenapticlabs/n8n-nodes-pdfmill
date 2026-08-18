@@ -1,9 +1,12 @@
 /**
  * Thin typed client over the pdfmill engine (Principle II — the node renders
  * NOTHING; it calls the engine). Two calls: POST /v1/render and
- * GET /v1/templates. Uses n8n's `this.helpers.httpRequest` so the workspace's
- * proxy config and TLS settings apply, and the credential system supplies the
- * key.
+ * GET /v1/templates. Uses n8n's `this.helpers.httpRequestWithAuthentication`
+ * so the workspace's proxy config and TLS settings apply AND the credential
+ * system injects the auth header itself — the node never reads, holds or logs
+ * the API key. The `x-api-key` header comes from `PdfmillApi.authenticate`
+ * (IAuthenticateGeneric); the only thing this client takes from the credential
+ * is the non-secret `baseUrl` needed to build the URL.
  *
  * HTTP status errors are NOT thrown by the transport (`ignoreHttpStatusErrors`)
  * — this client reads the engine's named-error envelope itself and raises a
@@ -19,6 +22,9 @@ import type {
 
 /** Either context that can make credentialed HTTP calls (execute + loadOptions). */
 export type EngineContext = IExecuteFunctions | ILoadOptionsFunctions;
+
+/** The credential type name n8n resolves + authenticates with. */
+export const CREDENTIALS_NAME = 'pdfmillApi';
 
 /** The engine's named error codes (mirrors apps/engine/src/lib/errors.ts). */
 export const ENGINE_ERROR_CODES = [
@@ -86,21 +92,17 @@ interface FullResponse {
 }
 
 interface Credentials {
-	apiKey: string;
 	baseUrl: string;
 }
 
+/**
+ * Read ONLY the non-secret part of the credential. The API key is deliberately
+ * never touched here — `httpRequestWithAuthentication` hands the credential to
+ * n8n, which applies `authenticate` server-side.
+ */
 async function getCredentials(ctx: EngineContext): Promise<Credentials> {
-	const creds = (await ctx.getCredentials('pdfmillApi')) as IDataObject;
-	const apiKey = typeof creds.apiKey === 'string' ? creds.apiKey.trim() : '';
+	const creds = (await ctx.getCredentials(CREDENTIALS_NAME)) as IDataObject;
 	const baseUrlRaw = typeof creds.baseUrl === 'string' ? creds.baseUrl.trim() : '';
-	if (apiKey === '') {
-		throw new EngineError({
-			code: 'MISSING_CREDENTIAL',
-			message: 'No pdfmill API key configured — add one in the node’s pdfmill credential.',
-			kind: 'config',
-		});
-	}
 	if (baseUrlRaw === '') {
 		throw new EngineError({
 			code: 'MISSING_CREDENTIAL',
@@ -108,7 +110,7 @@ async function getCredentials(ctx: EngineContext): Promise<Credentials> {
 			kind: 'config',
 		});
 	}
-	return { apiKey, baseUrl: baseUrlRaw.replace(/\/+$/, '') };
+	return { baseUrl: baseUrlRaw.replace(/\/+$/, '') };
 }
 
 function toBuffer(body: unknown): Buffer {
@@ -209,7 +211,7 @@ function transportError(e: unknown): EngineError {
 
 /** POST /v1/render → rendered document bytes + metadata. */
 export async function engineRender(ctx: EngineContext, input: RenderInput): Promise<RenderOutput> {
-	const { apiKey, baseUrl } = await getCredentials(ctx);
+	const { baseUrl } = await getCredentials(ctx);
 
 	const body: IDataObject = { format: input.format, data: input.data };
 	if (input.template !== undefined) body.template = input.template;
@@ -219,7 +221,7 @@ export async function engineRender(ctx: EngineContext, input: RenderInput): Prom
 	const requestOptions: IHttpRequestOptions = {
 		method: 'POST',
 		url: `${baseUrl}/v1/render`,
-		headers: { 'x-api-key': apiKey, 'content-type': 'application/json' },
+		headers: { 'content-type': 'application/json' },
 		body,
 		json: true,
 		encoding: 'arraybuffer',
@@ -229,7 +231,11 @@ export async function engineRender(ctx: EngineContext, input: RenderInput): Prom
 
 	let response: FullResponse;
 	try {
-		response = (await ctx.helpers.httpRequest(requestOptions)) as unknown as FullResponse;
+		response = (await ctx.helpers.httpRequestWithAuthentication.call(
+			ctx,
+			CREDENTIALS_NAME,
+			requestOptions,
+		)) as unknown as FullResponse;
 	} catch (e) {
 		throw transportError(e);
 	}
@@ -252,12 +258,11 @@ export async function engineRender(ctx: EngineContext, input: RenderInput): Prom
 
 /** GET /v1/templates → the account's renderable templates for the dropdown. */
 export async function engineListTemplates(ctx: EngineContext): Promise<TemplateOption[]> {
-	const { apiKey, baseUrl } = await getCredentials(ctx);
+	const { baseUrl } = await getCredentials(ctx);
 
 	const requestOptions: IHttpRequestOptions = {
 		method: 'GET',
 		url: `${baseUrl}/v1/templates`,
-		headers: { 'x-api-key': apiKey },
 		json: true,
 		returnFullResponse: true,
 		ignoreHttpStatusErrors: true,
@@ -265,7 +270,11 @@ export async function engineListTemplates(ctx: EngineContext): Promise<TemplateO
 
 	let response: FullResponse;
 	try {
-		response = (await ctx.helpers.httpRequest(requestOptions)) as unknown as FullResponse;
+		response = (await ctx.helpers.httpRequestWithAuthentication.call(
+			ctx,
+			CREDENTIALS_NAME,
+			requestOptions,
+		)) as unknown as FullResponse;
 	} catch (e) {
 		throw transportError(e);
 	}
