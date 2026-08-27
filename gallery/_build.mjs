@@ -2,9 +2,9 @@
  * Gallery workflow generator (M3 T014).
  *
  * Emits the ready-to-import n8n workflow JSONs in this folder. Building them
- * programmatically guarantees valid JSON + escaping, and reuses the ACTUAL
- * pdfmill starter fixtures as sample data — so each demo renders exactly the
- * document the template was designed for. Re-run with:  node gallery/_build.mjs
+ * programmatically guarantees valid JSON + escaping, and uses versioned snapshots
+ * of the pdfmill starter fixtures from gallery/fixtures — so this public node repo
+ * remains self-contained. Re-run with:  node gallery/_build.mjs
  *
  * These are the distribution artifact (Constitution I) — authored here, to be
  * submitted to the n8n template gallery at M5 (NOT submitted now).
@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = (id) =>
-	JSON.parse(readFileSync(join(here, '..', '..', 'templates', 'src', id, 'fixture.json'), 'utf8'));
+	JSON.parse(readFileSync(join(here, 'fixtures', `${id}.json`), 'utf8'));
 
 const PDFMILL_TYPE = 'n8n-nodes-pdfmill.pdfmill';
 

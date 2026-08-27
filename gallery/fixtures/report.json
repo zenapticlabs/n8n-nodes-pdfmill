@@ -1,0 +1,82 @@
+{
+  "kicker": "Monthly operations report",
+  "title": "Fulfillment Performance — July 2026",
+  "subtitle": "Order processing, shipping SLAs and automation coverage across all channels",
+  "periodStart": "2026-07-01",
+  "periodEnd": "2026-07-31",
+  "generatedAt": "2026-08-01",
+  "author": "Operations Automation Bot",
+  "summary": "July processed 4,812 orders with a 99.2% on-time dispatch rate. Automation now covers 87% of order flows end to end; the two remaining manual flows (B2B bulk and gift wrapping) are scheduled for August. Carrier exceptions fell 31% after the address-validation step was added to the intake workflow.",
+  "kpis": [
+    { "label": "Orders processed", "value": "4,812", "delta": "+9.4%" },
+    { "label": "On-time dispatch", "value": "99.2%", "delta": "+0.6 pt" },
+    { "label": "Automation coverage", "value": "87%", "delta": "+5 pt" },
+    {
+      "label": "Carrier exceptions",
+      "value": "142",
+      "delta": "−31%",
+      "down": false
+    }
+  ],
+  "sections": [
+    {
+      "heading": "Order intake",
+      "body": "Intake volume peaked in week 3 (1,401 orders) driven by the mid-summer promotion. The n8n intake workflow held p95 processing latency under 40 seconds throughout, including PDF confirmation generation and warehouse notification. No manual interventions were required for standard flows."
+    },
+    {
+      "heading": "Shipping and carriers",
+      "body": "DHL handled 61% of shipments, UPS 27%, regional couriers 12%. The new address-validation step rejected 87 malformed addresses before label purchase, saving an estimated €610 in return fees. Two carrier API outages (July 9, July 22) were absorbed by the retry queue with zero lost shipments."
+    },
+    {
+      "heading": "Exceptions and follow-ups",
+      "body": "142 carrier exceptions were raised, of which 129 auto-resolved through the exception workflow. The remaining 13 required human contact with the carrier. August focus: automate the B2B bulk flow and extend the exception workflow to regional couriers."
+    }
+  ],
+  "table": {
+    "caption": "Key metrics vs June 2026",
+    "rows": [
+      {
+        "label": "Orders processed",
+        "current": "4,812",
+        "previous": "4,399",
+        "change": "+9.4%",
+        "direction": "up"
+      },
+      {
+        "label": "On-time dispatch rate",
+        "current": "99.2%",
+        "previous": "98.6%",
+        "change": "+0.6 pt",
+        "direction": "up"
+      },
+      {
+        "label": "Avg. dispatch time",
+        "current": "3.1 h",
+        "previous": "3.8 h",
+        "change": "−18%",
+        "direction": "up"
+      },
+      {
+        "label": "Carrier exceptions",
+        "current": "142",
+        "previous": "206",
+        "change": "−31%",
+        "direction": "up"
+      },
+      {
+        "label": "Manual interventions",
+        "current": "13",
+        "previous": "41",
+        "change": "−68%",
+        "direction": "up"
+      },
+      {
+        "label": "Return rate",
+        "current": "2.4%",
+        "previous": "2.2%",
+        "change": "+0.2 pt",
+        "direction": "down"
+      }
+    ]
+  }
+}

@@ -35,7 +35,11 @@
     "lint:prepublish": "eslint nodes credentials package.json --config .eslintrc.prepublish.js",
     "format": "prettier nodes credentials --write",
     "test": "vitest run",
-    "prepublishOnly": "npm run build"
+    "verify:gallery-scope": "node scripts/verify-gallery-scope.mjs",
+    "verify:gallery-02": "node gallery-v2/_build-02.mjs && node gallery-v2/_test-02.mjs",
+    "verify:gallery-03": "node gallery-v2/_test-03.mjs",
+    "verify:gallery-05": "node gallery-v2/_build-05.mjs && node gallery-v2/_test-05.mjs",
+    "prepublishOnly": "npm run build && npm run lint:prepublish"
   },
   "files": [
     "dist"

@@ -1,0 +1,43 @@
+{
+  "invoiceNumber": "INV-2026-0042",
+  "issuedAt": "2026-07-15",
+  "dueAt": "2026-08-14",
+  "paymentTerms": "Net 30",
+  "currency": "USD",
+  "from": {
+    "name": "Fieldstone Automation LLC",
+    "address": "2211 Alder Street, Suite 4\nPortland, OR 97205, USA",
+    "email": "billing@fieldstone-automation.com",
+    "taxId": "US 84-2210417"
+  },
+  "billTo": {
+    "name": "Harbor & Lane Coffee Roasters",
+    "address": "18 Dockside Avenue\nSeattle, WA 98101, USA",
+    "email": "accounts@harborandlane.com"
+  },
+  "items": [
+    {
+      "description": "n8n workflow build — order-to-invoice automation (discovery, build, handover)",
+      "quantity": 1,
+      "unitPrice": 2400,
+      "lineTotal": 2400
+    },
+    {
+      "description": "Custom PDF template design (invoice + packing slip, brand-matched)",
+      "quantity": 2,
+      "unitPrice": 350,
+      "lineTotal": 700
+    },
+    {
+      "description": "Monthly automation support retainer — July 2026",
+      "quantity": 1,
+      "unitPrice": 480,
+      "lineTotal": 480
+    }
+  ],
+  "subtotal": 3580,
+  "taxRate": 8.5,
+  "taxAmount": 304.3,
+  "total": 3884.3,
+  "notes": "Payment by ACH to the account on file. Please reference INV-2026-0042. Thank you for your business."
+}

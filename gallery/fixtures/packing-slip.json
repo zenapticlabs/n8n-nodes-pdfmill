@@ -1,0 +1,40 @@
+{
+  "orderNumber": "SO-2026-3187",
+  "orderedAt": "2026-07-19",
+  "shippedAt": "2026-07-21",
+  "carrier": "DHL Express",
+  "trackingNumber": "JD014600003118872291",
+  "shipFrom": {
+    "name": "Nordic Trail Supply AB",
+    "address": "Industrivägen 8\n433 61 Sävedalen, Sweden"
+  },
+  "shipTo": {
+    "name": "Ana Popescu",
+    "address": "Strada Aviatorilor 22, ap. 14\n011853 Bucharest, Romania"
+  },
+  "items": [
+    {
+      "sku": "NTS-TENT-02",
+      "description": "Alpine 2-person tent, moss green",
+      "quantity": 1
+    },
+    {
+      "sku": "NTS-STV-11",
+      "description": "Compact gas stove with piezo ignition",
+      "quantity": 1
+    },
+    {
+      "sku": "NTS-BTL-07",
+      "description": "Insulated steel bottle 0.75 L",
+      "quantity": 2
+    },
+    {
+      "sku": "NTS-SCK-03",
+      "description": "Merino hiking socks, size 39-42",
+      "quantity": 3
+    }
+  ],
+  "totalItems": 7,
+  "totalWeight": "4.6 kg",
+  "notes": "Leave with neighbor at ap. 15 if not home. Fragile: stove contains glass ignition parts."
+}

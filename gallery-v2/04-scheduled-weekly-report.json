@@ -1,0 +1,220 @@
+{
+  "name": "Scheduled weekly metrics → branded report PDF, emailed (pdfmill)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "c439f4d7-a378-4d6a-9336-82defbbe7d36",
+      "name": "Every Monday 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.your-app.com/metrics/weekly",
+        "options": {}
+      },
+      "id": "d882c21f-2cc4-4f14-bd26-3caf6d8e4fa8",
+      "name": "Fetch last week's metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate last week's metrics (from the HTTP Request node) into pdfmill \"report\" data.\n// The HTTP Request node puts the parsed JSON response on the item; if its \"Full Response\"\n// option is enabled the body lands under `.body`, so accept either shape.\nconst res = $json.body ?? $json;\n\n// --- Reporting period: the last 7 completed days (yesterday, back 6 days) ---\nconst iso = (d) => d.toISOString().slice(0, 10);\nconst now = new Date();\nconst periodEnd = new Date(now.getTime() - 24 * 60 * 60 * 1000);            // yesterday = last full day\nconst periodStart = new Date(periodEnd.getTime() - 6 * 24 * 60 * 60 * 1000); // 7-day trailing window\nconst short = (d) => `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;\nconst humanRange = `${short(periodStart)}–${short(periodEnd)}`;\n\n// --- Read this week + last week from the API response, with safe demo fallbacks ---\n// (the fallbacks let the report render before you have wired up the real endpoint)\nconst cur = res.current ?? res.thisWeek ?? res;\nconst prev = res.previous ?? res.lastWeek ?? {};\nconst num = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);\nconst group = (n) => String(Math.round(num(n))).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');\nconst money = (n) => `$${group(n)}`;\n\nconst m = {\n  signups: num(cur.signups, 1240),\n  activeUsers: num(cur.activeUsers, 8630),\n  revenue: num(cur.revenue, 18420),\n  churnedUsers: num(cur.churnedUsers, 96),\n};\nconst p = {\n  signups: num(prev.signups, 1090),\n  activeUsers: num(prev.activeUsers, 8210),\n  revenue: num(prev.revenue, 16750),\n  churnedUsers: num(prev.churnedUsers, 78),\n};\n\n// --- Derived helpers: percentage change (real minus sign) + good/bad direction ---\nconst pct = (c, b) => {\n  if (!b) return '+0%';\n  const change = ((c - b) / b) * 100;\n  const sign = change > 0 ? '+' : (change < 0 ? '−' : '');\n  return `${sign}${Math.abs(change).toFixed(1)}%`;\n};\n// higherIsBetter: revenue/signups/actives are \"up\" when they grow; churn is \"up\" when it shrinks\nconst dir = (c, b, higherIsBetter = true) => {\n  const grew = c > b;\n  return (higherIsBetter ? grew : !grew) ? 'up' : 'down';\n};\n\nconst churnRate = m.activeUsers ? (m.churnedUsers / m.activeUsers) * 100 : 0;\nconst prevChurnRate = p.activeUsers ? (p.churnedUsers / p.activeUsers) * 100 : 0;\nconst arpu = m.activeUsers ? m.revenue / m.activeUsers : 0;\n\n// --- KPIs: the churn KPI is a regression, so down:true renders its delta red ---\nconst kpis = [\n  { label: 'New signups', value: group(m.signups), delta: pct(m.signups, p.signups), down: m.signups < p.signups },\n  { label: 'Active users', value: group(m.activeUsers), delta: pct(m.activeUsers, p.activeUsers), down: m.activeUsers < p.activeUsers },\n  { label: 'Weekly revenue', value: money(m.revenue), delta: pct(m.revenue, p.revenue), down: m.revenue < p.revenue },\n  { label: 'Churned users', value: group(m.churnedUsers), delta: pct(m.churnedUsers, p.churnedUsers), down: m.churnedUsers > p.churnedUsers },\n];\n\n// --- Narrative summary + sections, all computed from the numbers above ---\nconst summary =\n  `In the last 7 days the product added ${group(m.signups)} new signups (${pct(m.signups, p.signups)} vs the prior week) ` +\n  `and reached ${group(m.activeUsers)} weekly active users. Revenue was ${money(m.revenue)} (${pct(m.revenue, p.revenue)}). ` +\n  `${m.churnedUsers} users churned (${churnRate.toFixed(1)}% of actives), ` +\n  `${m.churnedUsers > p.churnedUsers ? 'up from' : 'down from'} ${p.churnedUsers} the week before.`;\n\nconst sections = [\n  {\n    heading: 'Growth',\n    body:\n      `New signups ${m.signups >= p.signups ? 'rose' : 'fell'} to ${group(m.signups)} (${pct(m.signups, p.signups)}). ` +\n      `Weekly active users are at ${group(m.activeUsers)} (${pct(m.activeUsers, p.activeUsers)} vs last week).`,\n  },\n  {\n    heading: 'Revenue',\n    body:\n      `Revenue for the window was ${money(m.revenue)}, a ${pct(m.revenue, p.revenue)} move against ${money(p.revenue)} the week before. ` +\n      `Average revenue per active user was $${arpu.toFixed(2)}.`,\n  },\n  {\n    heading: 'Retention & churn',\n    body:\n      `${m.churnedUsers} users churned (${churnRate.toFixed(1)}% of the active base) versus ${p.churnedUsers} (${prevChurnRate.toFixed(1)}%) a week earlier. ` +\n      `${m.churnedUsers > p.churnedUsers ? 'The uptick is the one metric to watch next week.' : 'Churn is trending the right way.'}`,\n  },\n];\n\n// --- Comparison table: this week vs last week, each row tagged up/down ---\nconst table = {\n  caption: `This week vs previous week (${humanRange})`,\n  rows: [\n    { label: 'New signups', current: group(m.signups), previous: group(p.signups), change: pct(m.signups, p.signups), direction: dir(m.signups, p.signups, true) },\n    { label: 'Active users', current: group(m.activeUsers), previous: group(p.activeUsers), change: pct(m.activeUsers, p.activeUsers), direction: dir(m.activeUsers, p.activeUsers, true) },\n    { label: 'Weekly revenue', current: money(m.revenue), previous: money(p.revenue), change: pct(m.revenue, p.revenue), direction: dir(m.revenue, p.revenue, true) },\n    { label: 'Churn rate', current: `${churnRate.toFixed(1)}%`, previous: `${prevChurnRate.toFixed(1)}%`, change: pct(m.churnedUsers, p.churnedUsers), direction: dir(m.churnedUsers, p.churnedUsers, false) },\n  ],\n};\n\n// --- Emit the pdfmill \"report\" data shape (see packages/templates/src/report/vars.ts) ---\nreturn [{\n  json: {\n    kicker: 'Weekly metrics report',\n    title: 'Weekly Performance Report',\n    subtitle: `Signups, engagement, revenue and churn — ${humanRange}`,\n    periodStart: iso(periodStart),\n    periodEnd: iso(periodEnd),\n    generatedAt: iso(now),\n    author: 'Automated by n8n + pdfmill',\n    summary,\n    kpis,\n    sections,\n    table,\n  },\n}];"
+      },
+      "id": "a9ef3079-1fb4-415e-9bd6-8e98e2b36fcd",
+      "name": "Aggregate metrics into report data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "template",
+        "template": "report",
+        "data": "={{ $json }}",
+        "format": "pdf",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "id": "67ab1780-8437-4731-8a6b-0516b78988ce",
+      "name": "Generate weekly report PDF",
+      "type": "n8n-nodes-pdfmill.pdfmill",
+      "typeVersion": 1,
+      "position": [
+        820,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "team@example.com",
+        "subject": "=Weekly report — {{ $('Aggregate metrics into report data').item.json.periodStart }} → {{ $('Aggregate metrics into report data').item.json.periodEnd }}",
+        "message": "=Hi team,\n\nAttached is the automated weekly report covering {{ $('Aggregate metrics into report data').item.json.periodStart }} → {{ $('Aggregate metrics into report data').item.json.periodEnd }}.\n\n{{ $('Aggregate metrics into report data').item.json.summary }}\n\n— Generated automatically by n8n + pdfmill",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "data"
+              }
+            ]
+          }
+        }
+      },
+      "id": "11235078-25e2-4d9a-8b03-018459c568a6",
+      "name": "Email the report to the team",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1120,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🗓️ Weekly schedule → report PDF (auto-email)\n\n**Who it's for:** teams who want the same report built and emailed on a schedule — every Monday, no-one lifting a finger.\n\n**What it does:** on a weekly schedule, pulls last week's metrics from your API, aggregates them into report data (KPIs, deltas, a table), renders a branded PDF with pdfmill, and emails it to the team.\n\n**How it works**\n1. **Schedule** fires every Monday at 08:00.\n2. **HTTP Request** pulls last week's metrics from your endpoint.\n3. **Code** aggregates them into report data (totals, week-over-week deltas, a breakdown table).\n4. **pdfmill** renders the Report PDF.\n5. **Gmail** emails it to the team.\n\n**Setup**\n1. Point the **HTTP Request** node at your metrics endpoint (add auth if needed).\n2. Add a **pdfmill** credential to the Generate node (API key at pdfmill.dev → API Keys) and pick the **Report** template.\n3. Add a **Gmail** credential and set the team recipient.",
+        "height": 580,
+        "width": 900
+      },
+      "id": "5a79c36a-8b26-438d-8f25-cd4bceed6058",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Trigger weekly\nFires every Monday at 08:00 — change the cadence in the Schedule node.",
+        "height": 400,
+        "width": 220,
+        "color": 7
+      },
+      "id": "368b81d9-c061-4384-9e65-6305ac91c85e",
+      "name": "Section: Trigger weekly",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        660
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Pull & aggregate metrics\nPulls last week's metrics from your API and aggregates them into report data — totals, week-over-week deltas and a table.",
+        "height": 400,
+        "width": 520,
+        "color": 7
+      },
+      "id": "dca3fa1b-45c1-44b6-b419-f1f3817ded47",
+      "name": "Section: Pull & aggregate metrics",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        200,
+        660
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Render & email\nRenders the report to a branded PDF with pdfmill and emails it to the team.",
+        "height": 400,
+        "width": 520,
+        "color": 7
+      },
+      "id": "7761feaa-8420-43fc-ace1-0d9affb77f58",
+      "name": "Section: Render & email",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        760,
+        660
+      ]
+    }
+  ],
+  "connections": {
+    "Every Monday 08:00": {
+      "main": [
+        [
+          {
+            "node": "Fetch last week's metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch last week's metrics": {
+      "main": [
+        [
+          {
+            "node": "Aggregate metrics into report data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate metrics into report data": {
+      "main": [
+        [
+          {
+            "node": "Generate weekly report PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate weekly report PDF": {
+      "main": [
+        [
+          {
+            "node": "Email the report to the team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "pdfmill"
+    }
+  ]
+}

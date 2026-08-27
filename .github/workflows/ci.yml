@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Verify gallery candidates
+        run: |
+          npm run verify:gallery-02
+          npm run verify:gallery-03
+          npm run verify:gallery-05
+          git diff --exit-code
+      - name: Run n8n community-package scanner
+        run: npx -y @n8n/scan-community-package@latest n8n-nodes-pdfmill
