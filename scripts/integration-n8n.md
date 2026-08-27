@@ -13,8 +13,9 @@ engine** over HTTP, and asserts real PDF/PNG bytes come back. It is skipped
 unless the engine env is present.
 
 ```bash
-# 1. start the engine (env-key mode; real pinned Chrome)
-( cd ../../../pdfmill && \
+# 1. Point to any checkout of the standalone engine, then start it.
+ENGINE_REPO="<path-to-pdfmill-engine-repository>"
+( cd "$ENGINE_REPO" && \
   PDFMILL_API_KEYS=int-key PDFMILL_NO_SANDBOX=1 PDFMILL_SKIP_CHROME_PIN_CHECK=1 \
   PORT=8099 PDFMILL_HOST=127.0.0.1 pnpm --filter @pdfmill/engine start ) &
 
@@ -32,16 +33,17 @@ the live template dropdown. It does **not** exercise the n8n UI runtime.
 npm run build
 npm pack                                # → n8n-nodes-pdfmill-<v>.tgz
 
-# 2. Start a throwaway n8n and install the node into it
-npx n8n@latest            # first run creates ~/.n8n
-#   In another shell, install the packed tarball into ~/.n8n/nodes:
-cd ~/.n8n/nodes && npm init -y >/dev/null 2>&1 || true
-npm install /abs/path/to/n8n-nodes-pdfmill-<v>.tgz
-#   Restart n8n so it loads the community node.
+# 2. Start a throwaway n8n with an explicit isolated user directory.
+PACKAGE_TARBALL="$(pwd)/n8n-nodes-pdfmill-<v>.tgz"
+export N8N_USER_FOLDER="$(mktemp -d)"
+mkdir -p "$N8N_USER_FOLDER/nodes"
+( cd "$N8N_USER_FOLDER/nodes" && npm init -y >/dev/null 2>&1 && npm install "$PACKAGE_TARBALL" )
+npx n8n@latest
+# Restart this process after changing the installed community package.
 
-# 3. Point pdfmill at your running engine
-#   engine (env-key mode) from the sibling PDFmill product repo:
-( cd ../../../pdfmill && \
+# 3. Start any checkout of the standalone engine.
+ENGINE_REPO="<path-to-pdfmill-engine-repository>"
+( cd "$ENGINE_REPO" && \
   PDFMILL_API_KEYS=int-key PDFMILL_NO_SANDBOX=1 PORT=8080 pnpm --filter @pdfmill/engine start ) &
 ```
 

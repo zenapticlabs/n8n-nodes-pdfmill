@@ -34,8 +34,8 @@ approved-template complexity floor below before treating any file as submission-
   `n8n-nodes-pdfmill@0.2.1` passed first on highest **n8n 2.37.1**, then latest **2.36.7**: nine nodes,
   nine edges, resolved pdfmill node, and only the three intentionally unset credential warnings.
   All six stickies had zero clipping (minimum 98px headroom). The live engine returned an inspected
-  79,394-byte, one-page landscape A4 certificate. Retained evidence is in
-  [`docs/evidence/n8n-gallery-02/`](../../../docs/evidence/n8n-gallery-02/). Gmail and Drive were not
+  79,394-byte, one-page landscape A4 certificate. Canvas and artifact evidence is retained by the
+  publishing program separately from this standalone package repository. Gmail and Drive were not
   executed. The human uploaded the committed credential-free JSON and submitted it on 2026-08-25;
   the portal returned HTTP 200 with 15 total nodes and `reviewStatus: in_review`. On 2026-08-26 the
   dashboard moved it to **Published**, the public page returned HTTP 200 with the correct title and
@@ -58,13 +58,13 @@ approved-template complexity floor below before treating any file as submission-
   highest published **n8n 2.37.2** and latest/stable **2.36.7**: nine functional nodes, nine edges,
   resolved pdfmill node, and only the three intentionally unset credential warnings. All six
   stickies had zero clipping and 259px minimum headroom. The live engine returned an inspected
-  33,330-byte, one-page portrait A4 packing slip with three SKUs and six physical units. Retained
-  evidence is in [`docs/evidence/n8n-gallery-05/`](../../../docs/evidence/n8n-gallery-05/). Gmail and
-  Drive were not executed. The human uploaded the committed credential-free JSON and submitted it on
+  33,330-byte, one-page portrait A4 packing slip with three SKUs and six physical units. Canvas and
+  artifact evidence is retained by the publishing program separately from this standalone package
+  repository. Gmail and Drive were not executed. The human uploaded the committed credential-free JSON and submitted it on
   2026-08-26. The portal returned HTTP 200 for both AI-review creation and final submission, reported
   15 total nodes, and set `reviewStatus: in_review`; the dashboard lists **Pending — Under review**.
-  The exact submitted title and description are recorded in
-  [`submission-18743.md`](../../../docs/evidence/n8n-gallery-05/submission-18743.md).
+  The exact submitted title, description, artifact hash, and portal response are retained in the
+  publishing program's review record.
 - Published `01`, `02`, and `03`, plus submitted `05`, pass the approved-template complexity floor.
   `04` fails and is **not submittable as-is**.
 

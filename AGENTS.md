@@ -1,8 +1,8 @@
 # n8n-nodes-pdfmill
 
-This public repository owns the published PDFmill community-node package and gallery workflows. In the app-studio workspace, the shared n8n constitution is `../../.specify/memory/constitution.md` and governs publishing, credentials, rendering, evidence, and human-controlled portal actions.
+This standalone public repository owns the published PDFmill community-node package and gallery workflows. Read `README.md` for the package contract and `VERIFICATION.md` before release or Creator Portal work.
 
-Read `README.md` for the package contract and `VERIFICATION.md` before release or Creator Portal work.
+When this repository is embedded in a larger program workspace, apply any explicitly supplied parent policy as an additional constraint. The repository must remain buildable and reviewable without depending on a parent checkout, named agent, or harness.
 
 ## Non-negotiables
 
