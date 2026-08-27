@@ -14,12 +14,12 @@ unless the engine env is present.
 
 ```bash
 # 1. start the engine (env-key mode; real pinned Chrome)
-PDFMILL_API_KEYS=int-key PDFMILL_NO_SANDBOX=1 PDFMILL_SKIP_CHROME_PIN_CHECK=1 \
-  PORT=8099 PDFMILL_HOST=127.0.0.1 pnpm --filter @pdfmill/engine start &
+( cd ../../../pdfmill && \
+  PDFMILL_API_KEYS=int-key PDFMILL_NO_SANDBOX=1 PDFMILL_SKIP_CHROME_PIN_CHECK=1 \
+  PORT=8099 PDFMILL_HOST=127.0.0.1 pnpm --filter @pdfmill/engine start ) &
 
 # 2. run the gated integration test against it
-PDFMILL_ENGINE_URL=http://127.0.0.1:8099 PDFMILL_API_KEY=int-key \
-  pnpm --filter n8n-nodes-pdfmill run test
+PDFMILL_ENGINE_URL=http://127.0.0.1:8099 PDFMILL_API_KEY=int-key npm test
 ```
 
 This proves node → engineClient → HTTP → engine → Chrome → real document, plus
@@ -29,8 +29,8 @@ the live template dropdown. It does **not** exercise the n8n UI runtime.
 
 ```bash
 # 1. Build + pack the node
-pnpm --filter n8n-nodes-pdfmill run build
-cd packages/n8n-node && npm pack        # → n8n-nodes-pdfmill-<v>.tgz
+npm run build
+npm pack                                # → n8n-nodes-pdfmill-<v>.tgz
 
 # 2. Start a throwaway n8n and install the node into it
 npx n8n@latest            # first run creates ~/.n8n
@@ -40,8 +40,9 @@ npm install /abs/path/to/n8n-nodes-pdfmill-<v>.tgz
 #   Restart n8n so it loads the community node.
 
 # 3. Point pdfmill at your running engine
-#   engine (env-key mode) from the monorepo:
-PDFMILL_API_KEYS=int-key PDFMILL_NO_SANDBOX=1 PORT=8080 pnpm --filter @pdfmill/engine start &
+#   engine (env-key mode) from the sibling PDFmill product repo:
+( cd ../../../pdfmill && \
+  PDFMILL_API_KEYS=int-key PDFMILL_NO_SANDBOX=1 PORT=8080 pnpm --filter @pdfmill/engine start ) &
 ```
 
 Then in the n8n UI:
@@ -64,7 +65,7 @@ Community-node install is a Cloud setting; the credential Base URL must be the
 
 ## CI
 
-`.github/workflows/node-ci.yml` runs build + the n8n community linter + the unit
-suite on every PR. Level-1 integration can be wired into CI by starting the
+`.github/workflows/ci.yml` runs typecheck, lint, tests, build, deterministic gallery checks, and the
+n8n community-package scan on every PR. Level-1 integration can be wired into CI by starting the
 engine as a step and exporting `PDFMILL_ENGINE_URL` + `PDFMILL_API_KEY` before
 the test step (mirrors the engine CI's Chrome setup).
