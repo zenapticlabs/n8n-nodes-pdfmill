@@ -13,7 +13,7 @@ approved-template complexity floor below before treating any file as submission-
 | `01-order-to-invoice.json`        | invoice      | Order webhook → validate + compute totals → IF guard → Generate PDF → email customer + archive to Drive → structured 200/400  |
 | `02-cohort-to-certificates.json`  | certificate  | Cohort webhook → validate the **whole roster** → fan-out → Generate PDF → direct Gmail + Drive branches → wait/join → 200/400 |
 | `03-form-to-report.json`          | report       | n8n **Form Trigger** → validate → Sheets lookup → aggregate/no-data branch → Generate PDF → Drive + email                     |
-| `04-scheduled-weekly-report.json` | report       | Weekly **Schedule Trigger** → **HTTP** metrics pull → aggregate (KPIs/deltas/table) → Generate PDF → email                    |
+| `04-scheduled-weekly-report.json` | report       | Weekly **Schedule Trigger** → previous-ISO-week window → **two parallel HTTP sources** → Merge → reconcile → complete/data-gap branch → Generate PDF → Gmail + Drive → wait/join |
 | `05-order-to-packing-slip.json`   | packing-slip | Store-order webhook → validate the **whole order** → price-free PDF → direct Gmail + Drive branches → wait/join → 200/400     |
 
 ## Status (2026-08-27)
@@ -66,8 +66,20 @@ approved-template complexity floor below before treating any file as submission-
   template API returned the same 15-node, nine-edge workflow under this creator, published with the
   submitted title. The exact submitted title, description, artifact hash, and portal response are
   retained in the publishing program's review record.
-- Published `01`, `02`, `03`, and `05` pass the approved-template complexity floor.
-  `04` fails and is **not submittable as-is**.
+- `04-scheduled-weekly-report.json` is **READY FOR HUMAN SUBMISSION** after a redesign on 2026-08-29.
+  Its original five-node straight line failed the complexity floor; the rebuild has **12 functional
+  nodes**, derives the previous complete ISO week in UTC, pulls **two independent metric sources in
+  parallel** (each retrying and continuing on failure), merges them, and reconciles them by shape
+  rather than arrival order. Missing sources, missing fields, or an API error produce a **data-gap
+  email that names what was missing** and render nothing; only complete data reaches pdfmill, whose
+  binary then fans directly to Gmail and Drive with a Merge waiting for both. Deterministic fixtures
+  cover ISO-week edges (including a W53 year boundary), source-order independence, `body` unwrapping,
+  zero-activity weeks, partial fields, a failed request, absent `previous` data, and secret hygiene.
+  Isolated imports with `n8n-nodes-pdfmill@0.2.1` passed on highest published **n8n 2.37.4** and
+  latest/stable **2.36.8** with byte-identical canvases: six stickies, zero clipping, 176px minimum
+  headroom, and the pdfmill node resolved. The documented sample ran through the workflow's own code
+  and rendered an inspected one-page, 46,451-byte report. Gmail and Drive were not executed.
+- All five workflows now pass the approved-template complexity floor; `04` was the last one below it.
 
 n8n allows only one template under review at a time. Queue submissions, but do not submit another file
 merely because the slot is open; it must pass both the render gate and the complexity floor.
@@ -89,7 +101,7 @@ batch fan-out/iteration, stateful decision/update, approval, or named retry/erro
 | `01-order-to-invoice.json`        |                8 | ✅ approved control       | validation + IF + success/error + Gmail/Drive                                       |
 | `02-cohort-to-certificates.json`  |                9 | ✅ pass after remediation | strict whole-roster validation + IF + direct binary fan-out + Merge + success/error |
 | `03-form-to-report.json`          |               11 | ✅ pass after redesign    | request validation + Sheets lookup + no-data branch + PDF/Drive/Gmail               |
-| `04-scheduled-weekly-report.json` |                5 | ❌ fail                   | straight-line fetch → transform → PDF → sink                                        |
+| `04-scheduled-weekly-report.json` |               12 | ✅ pass after redesign    | window + two parallel sources + merge + reconciliation + data-gap branch + fan-out  |
 | `05-order-to-packing-slip.json`   |                9 | ✅ pass after remediation | strict whole-order validation + IF + direct binary fan-out + Merge + success/error  |
 
 The executable floor is:

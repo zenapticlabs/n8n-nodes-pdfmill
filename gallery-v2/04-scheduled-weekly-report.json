@@ -1,5 +1,5 @@
 {
-  "name": "Scheduled weekly metrics → branded report PDF, emailed (pdfmill)",
+  "name": "Publish a weekly service desk report with pdfmill, Gmail, and Google Drive",
   "nodes": [
     {
       "parameters": {
@@ -10,46 +10,168 @@
               "triggerAtDay": [
                 1
               ],
-              "triggerAtHour": 8
+              "triggerAtHour": 8,
+              "triggerAtMinute": 0
             }
           ]
         }
       },
-      "id": "c439f4d7-a378-4d6a-9336-82defbbe7d36",
+      "id": "bcb1c716-8a5b-45ee-8776-3e5fc2ed8044",
       "name": "Every Monday 08:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        0,
-        860
+        -220,
+        1420
       ]
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "https://api.your-app.com/metrics/weekly",
-        "options": {}
+        "jsCode": "// SETUP: change these two values to your own mailbox and metrics API.\nconst reportRecipient = 'weekly-report@example.com';\nconst metricsBaseUrl = 'https://api.example.com';\n\n// Always report on the previous COMPLETE ISO week (Monday-Sunday, UTC), never a partial week.\nconst now = new Date();\nconst today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));\nconst mondayOffset = (today.getUTCDay() + 6) % 7;\nconst periodStartDate = new Date(today);\nperiodStartDate.setUTCDate(today.getUTCDate() - mondayOffset - 7);\nconst periodEndDate = new Date(periodStartDate);\nperiodEndDate.setUTCDate(periodStartDate.getUTCDate() + 6);\n\nconst isoWeekOf = (date) => {\n  const cursor = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));\n  cursor.setUTCDate(cursor.getUTCDate() - ((cursor.getUTCDay() + 6) % 7) + 3);\n  const isoYear = cursor.getUTCFullYear();\n  const firstThursday = new Date(Date.UTC(isoYear, 0, 4));\n  firstThursday.setUTCDate(firstThursday.getUTCDate() - ((firstThursday.getUTCDay() + 6) % 7) + 3);\n  return {\n    isoYear,\n    week: 1 + Math.round((cursor.getTime() - firstThursday.getTime()) / 604800000),\n  };\n};\n\nconst { isoYear, week } = isoWeekOf(periodStartDate);\nconst weekLabel = isoYear + '-W' + String(week).padStart(2, '0');\nconst asDate = (value) => value.toISOString().slice(0, 10);\n\nreturn [{\n  json: {\n    weekLabel,\n    fileSafeWeek: weekLabel.replace(/[^A-Za-z0-9._-]+/g, '-'),\n    periodStart: asDate(periodStartDate),\n    periodEnd: asDate(periodEndDate),\n    generatedAt: asDate(today),\n    reportRecipient,\n    metricsBaseUrl,\n  },\n  pairedItem: { item: 0 },\n}];"
       },
-      "id": "d882c21f-2cc4-4f14-bd26-3caf6d8e4fa8",
-      "name": "Fetch last week's metrics",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        260,
-        860
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Aggregate last week's metrics (from the HTTP Request node) into pdfmill \"report\" data.\n// The HTTP Request node puts the parsed JSON response on the item; if its \"Full Response\"\n// option is enabled the body lands under `.body`, so accept either shape.\nconst res = $json.body ?? $json;\n\n// --- Reporting period: the last 7 completed days (yesterday, back 6 days) ---\nconst iso = (d) => d.toISOString().slice(0, 10);\nconst now = new Date();\nconst periodEnd = new Date(now.getTime() - 24 * 60 * 60 * 1000);            // yesterday = last full day\nconst periodStart = new Date(periodEnd.getTime() - 6 * 24 * 60 * 60 * 1000); // 7-day trailing window\nconst short = (d) => `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;\nconst humanRange = `${short(periodStart)}–${short(periodEnd)}`;\n\n// --- Read this week + last week from the API response, with safe demo fallbacks ---\n// (the fallbacks let the report render before you have wired up the real endpoint)\nconst cur = res.current ?? res.thisWeek ?? res;\nconst prev = res.previous ?? res.lastWeek ?? {};\nconst num = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);\nconst group = (n) => String(Math.round(num(n))).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');\nconst money = (n) => `$${group(n)}`;\n\nconst m = {\n  signups: num(cur.signups, 1240),\n  activeUsers: num(cur.activeUsers, 8630),\n  revenue: num(cur.revenue, 18420),\n  churnedUsers: num(cur.churnedUsers, 96),\n};\nconst p = {\n  signups: num(prev.signups, 1090),\n  activeUsers: num(prev.activeUsers, 8210),\n  revenue: num(prev.revenue, 16750),\n  churnedUsers: num(prev.churnedUsers, 78),\n};\n\n// --- Derived helpers: percentage change (real minus sign) + good/bad direction ---\nconst pct = (c, b) => {\n  if (!b) return '+0%';\n  const change = ((c - b) / b) * 100;\n  const sign = change > 0 ? '+' : (change < 0 ? '−' : '');\n  return `${sign}${Math.abs(change).toFixed(1)}%`;\n};\n// higherIsBetter: revenue/signups/actives are \"up\" when they grow; churn is \"up\" when it shrinks\nconst dir = (c, b, higherIsBetter = true) => {\n  const grew = c > b;\n  return (higherIsBetter ? grew : !grew) ? 'up' : 'down';\n};\n\nconst churnRate = m.activeUsers ? (m.churnedUsers / m.activeUsers) * 100 : 0;\nconst prevChurnRate = p.activeUsers ? (p.churnedUsers / p.activeUsers) * 100 : 0;\nconst arpu = m.activeUsers ? m.revenue / m.activeUsers : 0;\n\n// --- KPIs: the churn KPI is a regression, so down:true renders its delta red ---\nconst kpis = [\n  { label: 'New signups', value: group(m.signups), delta: pct(m.signups, p.signups), down: m.signups < p.signups },\n  { label: 'Active users', value: group(m.activeUsers), delta: pct(m.activeUsers, p.activeUsers), down: m.activeUsers < p.activeUsers },\n  { label: 'Weekly revenue', value: money(m.revenue), delta: pct(m.revenue, p.revenue), down: m.revenue < p.revenue },\n  { label: 'Churned users', value: group(m.churnedUsers), delta: pct(m.churnedUsers, p.churnedUsers), down: m.churnedUsers > p.churnedUsers },\n];\n\n// --- Narrative summary + sections, all computed from the numbers above ---\nconst summary =\n  `In the last 7 days the product added ${group(m.signups)} new signups (${pct(m.signups, p.signups)} vs the prior week) ` +\n  `and reached ${group(m.activeUsers)} weekly active users. Revenue was ${money(m.revenue)} (${pct(m.revenue, p.revenue)}). ` +\n  `${m.churnedUsers} users churned (${churnRate.toFixed(1)}% of actives), ` +\n  `${m.churnedUsers > p.churnedUsers ? 'up from' : 'down from'} ${p.churnedUsers} the week before.`;\n\nconst sections = [\n  {\n    heading: 'Growth',\n    body:\n      `New signups ${m.signups >= p.signups ? 'rose' : 'fell'} to ${group(m.signups)} (${pct(m.signups, p.signups)}). ` +\n      `Weekly active users are at ${group(m.activeUsers)} (${pct(m.activeUsers, p.activeUsers)} vs last week).`,\n  },\n  {\n    heading: 'Revenue',\n    body:\n      `Revenue for the window was ${money(m.revenue)}, a ${pct(m.revenue, p.revenue)} move against ${money(p.revenue)} the week before. ` +\n      `Average revenue per active user was $${arpu.toFixed(2)}.`,\n  },\n  {\n    heading: 'Retention & churn',\n    body:\n      `${m.churnedUsers} users churned (${churnRate.toFixed(1)}% of the active base) versus ${p.churnedUsers} (${prevChurnRate.toFixed(1)}%) a week earlier. ` +\n      `${m.churnedUsers > p.churnedUsers ? 'The uptick is the one metric to watch next week.' : 'Churn is trending the right way.'}`,\n  },\n];\n\n// --- Comparison table: this week vs last week, each row tagged up/down ---\nconst table = {\n  caption: `This week vs previous week (${humanRange})`,\n  rows: [\n    { label: 'New signups', current: group(m.signups), previous: group(p.signups), change: pct(m.signups, p.signups), direction: dir(m.signups, p.signups, true) },\n    { label: 'Active users', current: group(m.activeUsers), previous: group(p.activeUsers), change: pct(m.activeUsers, p.activeUsers), direction: dir(m.activeUsers, p.activeUsers, true) },\n    { label: 'Weekly revenue', current: money(m.revenue), previous: money(p.revenue), change: pct(m.revenue, p.revenue), direction: dir(m.revenue, p.revenue, true) },\n    { label: 'Churn rate', current: `${churnRate.toFixed(1)}%`, previous: `${prevChurnRate.toFixed(1)}%`, change: pct(m.churnedUsers, p.churnedUsers), direction: dir(m.churnedUsers, p.churnedUsers, false) },\n  ],\n};\n\n// --- Emit the pdfmill \"report\" data shape (see packages/templates/src/report/vars.ts) ---\nreturn [{\n  json: {\n    kicker: 'Weekly metrics report',\n    title: 'Weekly Performance Report',\n    subtitle: `Signups, engagement, revenue and churn — ${humanRange}`,\n    periodStart: iso(periodStart),\n    periodEnd: iso(periodEnd),\n    generatedAt: iso(now),\n    author: 'Automated by n8n + pdfmill',\n    summary,\n    kpis,\n    sections,\n    table,\n  },\n}];"
-      },
-      "id": "a9ef3079-1fb4-415e-9bd6-8e98e2b36fcd",
-      "name": "Aggregate metrics into report data",
+      "id": "b0839dcf-1b9f-425b-8106-fe1d651e8d77",
+      "name": "Set the weekly reporting window",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        560,
-        860
+        80,
+        1420
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.metricsBaseUrl }}/service-desk/tickets",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "start",
+              "value": "={{ $json.periodStart }}"
+            },
+            {
+              "name": "end",
+              "value": "={{ $json.periodEnd }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "fa47def4-94e8-4ba6-8084-519643358d4f",
+      "name": "Fetch ticket metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        1280
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.metricsBaseUrl }}/service-desk/satisfaction",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "start",
+              "value": "={{ $json.periodStart }}"
+            },
+            {
+              "name": "end",
+              "value": "={{ $json.periodEnd }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "9b226a4b-2c30-4e96-84fa-3d632305e2f6",
+      "name": "Fetch satisfaction scores",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        1560
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2,
+        "options": {}
+      },
+      "id": "96936695-3428-491d-8fd5-6884116ba950",
+      "name": "Combine both metric sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        700,
+        1420
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reconcile TWO independent sources before anything is rendered or sent.\n// Either request can fail or answer partially (both HTTP nodes continue on failure), so the\n// report is built only when every required figure is present. Otherwise this returns an\n// incomplete result and the workflow sends a data-gap notice instead of a misleading report.\nconst reportWindow = $('Set the weekly reporting window').first().json;\nconst inputs = $input.all().map((item) => (item.json && typeof item.json === 'object') ? item.json : {});\nconst unwrap = (row) => (row.body && typeof row.body === 'object') ? row.body : row;\nconst rows = inputs.map(unwrap);\n\nconst numeric = (value) => {\n  if (value === null || value === undefined || value === '') return null;\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? parsed : null;\n};\nconst hasTickets = (row) => numeric(row.ticketsOpened) !== null || numeric(row.ticketsResolved) !== null;\nconst hasSatisfaction = (row) => numeric(row.csatScore) !== null;\nconst tickets = rows.find(hasTickets) ?? null;\nconst satisfaction = rows.find(hasSatisfaction) ?? null;\nconst sourceErrors = inputs\n  .filter((row) => row.error)\n  .map((row) => String((row.error && row.error.message) ? row.error.message : row.error).slice(0, 200));\n\nconst missingSources = [];\nif (!tickets) missingSources.push('ticket metrics');\nif (!satisfaction) missingSources.push('satisfaction scores');\n\nconst missingFields = [];\nif (tickets) {\n  for (const field of ['ticketsOpened', 'ticketsResolved', 'firstResponseMinutes']) {\n    if (numeric(tickets[field]) === null) missingFields.push('tickets.' + field);\n  }\n}\nif (satisfaction) {\n  for (const field of ['csatScore', 'csatResponses']) {\n    if (numeric(satisfaction[field]) === null) missingFields.push('satisfaction.' + field);\n  }\n}\n\nif (missingSources.length > 0 || missingFields.length > 0) {\n  return [{\n    json: {\n      weekLabel: reportWindow.weekLabel,\n      periodStart: reportWindow.periodStart,\n      periodEnd: reportWindow.periodEnd,\n      reportRecipient: reportWindow.reportRecipient,\n      isComplete: false,\n      missingSources,\n      missingFields,\n      sourceErrors,\n      status: 'incomplete_metrics',\n    },\n    pairedItem: { item: 0 },\n  }];\n}\n\nconst previousOf = (row) => (row.previous && typeof row.previous === 'object') ? row.previous : {};\nconst ticketsPrevious = previousOf(tickets);\nconst satisfactionPrevious = previousOf(satisfaction);\n\nconst round = (value, digits) => {\n  const factor = Math.pow(10, digits);\n  return Math.round(value * factor) / factor;\n};\nconst withThousands = (value) => String(value).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');\nconst percentChange = (current, previous, higherIsBetter) => {\n  const base = numeric(previous);\n  if (base === null || base === 0) {\n    return { change: 'No prior week', direction: 'up', improved: true, previous: 'n/a' };\n  }\n  const ratio = ((current - base) / Math.abs(base)) * 100;\n  const improved = higherIsBetter ? current >= base : current <= base;\n  return {\n    change: (ratio >= 0 ? '+' : '-') + round(Math.abs(ratio), 1) + '%',\n    direction: improved ? 'up' : 'down',\n    improved,\n    previous: base,\n  };\n};\n\nconst opened = numeric(tickets.ticketsOpened) ?? 0;\nconst resolved = numeric(tickets.ticketsResolved) ?? 0;\nconst firstResponse = numeric(tickets.firstResponseMinutes) ?? 0;\nconst csat = numeric(satisfaction.csatScore) ?? 0;\nconst csatResponses = numeric(satisfaction.csatResponses) ?? 0;\nconst backlog = Math.max(opened - resolved, 0);\nconst resolutionRate = opened > 0 ? round((resolved / opened) * 100, 1) : 0;\n\nconst openedChange = percentChange(opened, ticketsPrevious.ticketsOpened, false);\nconst resolvedChange = percentChange(resolved, ticketsPrevious.ticketsResolved, true);\n\n// The resolution-rate KPI must carry the change in the RATE, never the change in resolved volume.\nconst previousOpened = numeric(ticketsPrevious.ticketsOpened);\nconst previousResolved = numeric(ticketsPrevious.ticketsResolved);\nconst previousResolutionRate = (previousOpened !== null && previousOpened > 0 && previousResolved !== null)\n  ? round((previousResolved / previousOpened) * 100, 1)\n  : null;\nconst resolutionRateChange = previousResolutionRate === null\n  ? { change: 'No prior week', improved: true }\n  : {\n      change: (resolutionRate >= previousResolutionRate ? '+' : '-') +\n        round(Math.abs(resolutionRate - previousResolutionRate), 1) + ' pt',\n      improved: resolutionRate >= previousResolutionRate,\n    };\nconst responseChange = percentChange(firstResponse, ticketsPrevious.firstResponseMinutes, false);\nconst csatChange = percentChange(csat, satisfactionPrevious.csatScore, true);\n\nconst metricRows = [\n  {\n    label: 'Tickets opened',\n    current: withThousands(opened),\n    previous: openedChange.previous === 'n/a' ? 'n/a' : withThousands(openedChange.previous),\n    change: openedChange.change,\n    direction: openedChange.direction,\n  },\n  {\n    label: 'Tickets resolved',\n    current: withThousands(resolved),\n    previous: resolvedChange.previous === 'n/a' ? 'n/a' : withThousands(resolvedChange.previous),\n    change: resolvedChange.change,\n    direction: resolvedChange.direction,\n  },\n  {\n    label: 'Median first response',\n    current: round(firstResponse, 1) + ' min',\n    previous: responseChange.previous === 'n/a' ? 'n/a' : round(responseChange.previous, 1) + ' min',\n    change: responseChange.change,\n    direction: responseChange.direction,\n  },\n  {\n    label: 'Customer satisfaction',\n    current: round(csat, 2) + ' / 5',\n    previous: csatChange.previous === 'n/a' ? 'n/a' : round(csatChange.previous, 2) + ' / 5',\n    change: csatChange.change,\n    direction: csatChange.direction,\n  },\n];\n\nconst summary = 'The service desk opened ' + withThousands(opened) + ' tickets and resolved ' +\n  withThousands(resolved) + ' between ' + reportWindow.periodStart + ' and ' + reportWindow.periodEnd +\n  ', a ' + resolutionRate + '% resolution rate with ' + withThousands(backlog) +\n  ' still open at the end of the week. Median first response was ' + round(firstResponse, 1) +\n  ' minutes and customer satisfaction averaged ' + round(csat, 2) + ' / 5 across ' +\n  withThousands(csatResponses) + ' rated conversations. Every figure comes from the ticket and ' +\n  'satisfaction APIs for this week only; no value is estimated or carried forward.';\n\nreturn [{\n  json: {\n    isComplete: true,\n    status: 'report_data_ready',\n    weekLabel: reportWindow.weekLabel,\n    fileSafeWeek: reportWindow.fileSafeWeek,\n    reportRecipient: reportWindow.reportRecipient,\n    ticketsOpened: opened,\n    ticketsResolved: resolved,\n    backlog,\n    resolutionRate,\n    csatScore: round(csat, 2),\n    kicker: 'Weekly service desk report',\n    title: 'Service desk performance - ' + reportWindow.weekLabel,\n    subtitle: 'Ticket volume, resolution and customer satisfaction for ' +\n      reportWindow.periodStart + ' to ' + reportWindow.periodEnd,\n    periodStart: reportWindow.periodStart,\n    periodEnd: reportWindow.periodEnd,\n    generatedAt: reportWindow.generatedAt,\n    author: 'Scheduled n8n reporting workflow',\n    summary,\n    kpis: [\n      { label: 'Tickets opened', value: withThousands(opened), delta: openedChange.change, down: !openedChange.improved },\n      { label: 'Resolution rate', value: resolutionRate + '%', delta: resolutionRateChange.change, down: !resolutionRateChange.improved },\n      { label: 'Median first response', value: round(firstResponse, 1) + ' min', delta: responseChange.change, down: !responseChange.improved },\n      { label: 'Customer satisfaction', value: round(csat, 2) + ' / 5', delta: csatChange.change, down: !csatChange.improved },\n    ],\n    sections: [\n      {\n        heading: 'Volume and resolution',\n        body: 'Agents resolved ' + withThousands(resolved) + ' of ' + withThousands(opened) +\n          ' tickets opened this week (' + resolutionRate + '%). ' + withThousands(backlog) +\n          ' tickets remained open at the close of ' + reportWindow.periodEnd +\n          ' and roll into the next reporting week.',\n      },\n      {\n        heading: 'Responsiveness and satisfaction',\n        body: 'Median first response was ' + round(firstResponse, 1) + ' minutes (' +\n          responseChange.change + ' against the prior week). Satisfaction averaged ' +\n          round(csat, 2) + ' / 5 from ' + withThousands(csatResponses) +\n          ' rated conversations, so the score covers only customers who chose to rate.',\n      },\n    ],\n    table: {\n      caption: 'Week ' + reportWindow.weekLabel + ' against the prior week',\n      rows: metricRows,\n    },\n  },\n  pairedItem: { item: 0 },\n}];"
+      },
+      "id": "5cd8c721-00a0-480b-89fe-7d2a14221ae5",
+      "name": "Validate and build the weekly report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        980,
+        1420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a1bf1a54-752b-42dc-86fe-0551c178e541",
+              "leftValue": "={{ $json.isComplete }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bb7c19e1-d169-4aa4-819f-07a5ba964a86",
+      "name": "Are both sources complete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1260,
+        1420
       ]
     },
     {
@@ -61,20 +183,20 @@
         "binaryPropertyName": "data",
         "options": {}
       },
-      "id": "67ab1780-8437-4731-8a6b-0516b78988ce",
-      "name": "Generate weekly report PDF",
+      "id": "472614ef-20a4-492e-89f7-5e5e7482b573",
+      "name": "Generate the weekly report PDF",
       "type": "n8n-nodes-pdfmill.pdfmill",
       "typeVersion": 1,
       "position": [
-        820,
-        860
+        1560,
+        1280
       ]
     },
     {
       "parameters": {
-        "sendTo": "team@example.com",
-        "subject": "=Weekly report — {{ $('Aggregate metrics into report data').item.json.periodStart }} → {{ $('Aggregate metrics into report data').item.json.periodEnd }}",
-        "message": "=Hi team,\n\nAttached is the automated weekly report covering {{ $('Aggregate metrics into report data').item.json.periodStart }} → {{ $('Aggregate metrics into report data').item.json.periodEnd }}.\n\n{{ $('Aggregate metrics into report data').item.json.summary }}\n\n— Generated automatically by n8n + pdfmill",
+        "sendTo": "={{ $('Validate and build the weekly report').item.json.reportRecipient }}",
+        "subject": "=Service desk report {{ $('Validate and build the weekly report').item.json.weekLabel }}",
+        "message": "=The weekly service desk report is attached.\n\nWeek: {{ $('Validate and build the weekly report').item.json.weekLabel }} ({{ $('Validate and build the weekly report').item.json.periodStart }} to {{ $('Validate and build the weekly report').item.json.periodEnd }})\nTickets opened: {{ $('Validate and build the weekly report').item.json.ticketsOpened }}\nResolution rate: {{ $('Validate and build the weekly report').item.json.resolutionRate }}%\nCustomer satisfaction: {{ $('Validate and build the weekly report').item.json.csatScore }} / 5\nStill open at week end: {{ $('Validate and build the weekly report').item.json.backlog }}\n\nEvery figure in the PDF comes from the ticket and satisfaction APIs for this week only.",
         "options": {
           "attachmentsUi": {
             "attachmentsBinary": [
@@ -85,76 +207,169 @@
           }
         }
       },
-      "id": "11235078-25e2-4d9a-8b03-018459c568a6",
+      "id": "23dc31aa-0f4e-44aa-8a0c-7144723f8022",
       "name": "Email the report to the team",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        1120,
-        860
+        1860,
+        1160
       ]
     },
     {
       "parameters": {
-        "content": "## 🗓️ Weekly schedule → report PDF (auto-email)\n\n**Who it's for:** teams who want the same report built and emailed on a schedule — every Monday, no-one lifting a finger.\n\n**What it does:** on a weekly schedule, pulls last week's metrics from your API, aggregates them into report data (KPIs, deltas, a table), renders a branded PDF with pdfmill, and emails it to the team.\n\n**How it works**\n1. **Schedule** fires every Monday at 08:00.\n2. **HTTP Request** pulls last week's metrics from your endpoint.\n3. **Code** aggregates them into report data (totals, week-over-week deltas, a breakdown table).\n4. **pdfmill** renders the Report PDF.\n5. **Gmail** emails it to the team.\n\n**Setup**\n1. Point the **HTTP Request** node at your metrics endpoint (add auth if needed).\n2. Add a **pdfmill** credential to the Generate node (API key at pdfmill.dev → API Keys) and pick the **Report** template.\n3. Add a **Gmail** credential and set the team recipient.",
-        "height": 580,
-        "width": 900
+        "resource": "file",
+        "operation": "upload",
+        "inputDataFieldName": "data",
+        "name": "=Service desk report - {{ $('Validate and build the weekly report').item.json.fileSafeWeek }}.pdf",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
       },
-      "id": "5a79c36a-8b26-438d-8f25-cd4bceed6058",
+      "id": "8c959791-172b-4cc6-8b1c-80158932a0c9",
+      "name": "Archive the report in Google Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1860,
+        1420
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "chooseBranch",
+        "numberInputs": 2,
+        "chooseBranchMode": "waitForAll",
+        "output": "empty"
+      },
+      "id": "0de183d1-eef0-4fbc-8226-64036e02de15",
+      "name": "Wait for email and archive",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2160,
+        1280
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.reportRecipient }}",
+        "subject": "=No service desk report for {{ $json.weekLabel }} - incomplete metrics",
+        "message": "=The weekly service desk report was NOT generated for {{ $json.weekLabel }} ({{ $json.periodStart }} to {{ $json.periodEnd }}).\n\nMissing sources: {{ $json.missingSources.join(', ') || 'none' }}\nMissing fields: {{ $json.missingFields.join(', ') || 'none' }}\nSource errors: {{ $json.sourceErrors.join(' | ') || 'none reported' }}\n\nNo PDF was rendered and nothing was archived. Fix the metrics API or the credentials, then run this workflow manually to publish the week.",
+        "options": {}
+      },
+      "id": "372eb463-0315-499e-84c0-eb183b1dc0d1",
+      "name": "Email a data-gap notice",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1560,
+        1840
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📈 Scheduled weekly report from two metric sources\n\n**Who it's for:** support, ops and agency teams that owe someone the same report every week and want it produced, delivered and archived without a person assembling it.\n\n**What it does:** every Monday it derives the previous complete ISO week, pulls **two independent metric sources in parallel**, and reconciles them. Only when every required figure is present does pdfmill render the branded report; the same binary is emailed and archived.\n\n**The honest part:** a partial week never becomes a report. If either source fails, answers empty, or omits a required field, the workflow sends a **data-gap notice naming what was missing** and renders nothing. Both HTTP nodes retry three times and continue on failure, so a dead API produces an explained gap instead of a silent miss or a misleading PDF.\n\n**Control flow**\n1. Schedule → compute the previous Monday–Sunday window (UTC).\n2. Fetch ticket metrics and satisfaction scores in parallel, with retries.\n3. Merge both sources and reconcile them against the required fields.\n4. Complete → render the PDF; incomplete → email a data-gap notice and stop.\n5. Email and archive the same pdfmill binary, then wait for both branches.\n\n**Setup:** open **Set the weekly reporting window** and change `reportRecipient` and `metricsBaseUrl`; connect pdfmill, Gmail and Google Drive; pick the Drive archive folder.",
+        "height": 700,
+        "width": 1200
+      },
+      "id": "1cff8d82-d69f-47dc-8d9e-ed7e9259e838",
       "name": "Overview",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -80,
-        20
+        -280,
+        120
       ]
     },
     {
       "parameters": {
-        "content": "## Trigger weekly\nFires every Monday at 08:00 — change the cadence in the Schedule node.",
-        "height": 400,
-        "width": 220,
+        "content": "## 1. Window, then two sources\nAlways the **previous complete ISO week** in UTC, so a run never reports a partial week.\n\nBoth requests retry and **continue on failure**, so a dead endpoint becomes a reported gap instead of an aborted run.",
+        "height": 620,
+        "width": 900,
         "color": 7
       },
-      "id": "368b81d9-c061-4384-9e65-6305ac91c85e",
-      "name": "Section: Trigger weekly",
+      "id": "9db6f16b-c0f9-4e95-8421-9481b88d2005",
+      "name": "Section: Window and sources",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -60,
-        660
+        -280,
+        1080
       ]
     },
     {
       "parameters": {
-        "content": "## Pull & aggregate metrics\nPulls last week's metrics from your API and aggregates them into report data — totals, week-over-week deltas and a table.",
-        "height": 400,
-        "width": 520,
+        "content": "## 2. Reconcile before rendering\nThe Code node classifies both responses **by shape, not arrival order**, and requires every figure.\n\nAnything missing produces `isComplete: false` naming the gap, so no report is built from partial data.",
+        "height": 620,
+        "width": 880,
         "color": 7
       },
-      "id": "dca3fa1b-45c1-44b6-b419-f1f3817ded47",
-      "name": "Section: Pull & aggregate metrics",
+      "id": "1318bebc-c696-46b4-8ec7-481e2cd828ea",
+      "name": "Section: Reconcile before rendering",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        200,
-        660
+        660,
+        1080
       ]
     },
     {
       "parameters": {
-        "content": "## Render & email\nRenders the report to a branded PDF with pdfmill and emails it to the team.",
-        "height": 400,
-        "width": 520,
+        "content": "## 3. Render, deliver and join\nThe pdfmill binary fans out **directly** to Gmail and Drive, and the Merge waits for both branches.",
+        "height": 700,
+        "width": 880,
         "color": 7
       },
-      "id": "7761feaa-8420-43fc-ace1-0d9affb77f58",
-      "name": "Section: Render & email",
+      "id": "6c0c083b-542f-4624-8f48-b4ac6117db2e",
+      "name": "Section: Render, deliver, join",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        760,
-        660
+        1540,
+        1020
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Incomplete metrics → a named gap\nThe team gets an email naming the missing sources, fields and API errors. Nothing is rendered or archived, so an empty inbox never hides a problem.",
+        "height": 380,
+        "width": 880,
+        "color": 7
+      },
+      "id": "45107004-a78c-4bc8-84fc-e70180ed362e",
+      "name": "Incomplete week → data-gap notice",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        1620
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Expected responses\n\nPoint `metricsBaseUrl` at any API that answers these two GET requests with `start` and `end` query parameters.\n\n`/service-desk/tickets`\n```json\n{\n  \"ticketsOpened\": 412,\n  \"ticketsResolved\": 398,\n  \"firstResponseMinutes\": 18.4,\n  \"previous\": { \"ticketsOpened\": 377, \"ticketsResolved\": 361, \"firstResponseMinutes\": 22.7 }\n}\n```\n\n`/service-desk/satisfaction`\n```json\n{\n  \"csatScore\": 4.62,\n  \"csatResponses\": 214,\n  \"previous\": { \"csatScore\": 4.41 }\n}\n```\n\n### Required\n- Tickets: `ticketsOpened`, `ticketsResolved`, `firstResponseMinutes`\n- Satisfaction: `csatScore`, `csatResponses`\n\n`previous` is optional — without it the report prints \"No prior week\" instead of a fabricated comparison. A response wrapped in `body` is unwrapped automatically.\n\n### Credentials and setup\n1. Edit `reportRecipient` and `metricsBaseUrl` in **Set the weekly reporting window**.\n2. Add pdfmill, Gmail and Google Drive credentials.\n3. Choose the Drive folder for the archive.\n4. If your metrics API needs auth, add it on both HTTP nodes — never paste a token into this template.",
+        "height": 1060,
+        "width": 900,
+        "color": 4
+      },
+      "id": "e6cacb15-2882-4dba-8868-c3d29b7b4741",
+      "name": "Setup: expected metrics responses",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -280,
+        1900
       ]
     }
   ],
@@ -163,42 +378,125 @@
       "main": [
         [
           {
-            "node": "Fetch last week's metrics",
+            "node": "Set the weekly reporting window",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Fetch last week's metrics": {
+    "Set the weekly reporting window": {
       "main": [
         [
           {
-            "node": "Aggregate metrics into report data",
+            "node": "Fetch ticket metrics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch satisfaction scores",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Aggregate metrics into report data": {
+    "Fetch ticket metrics": {
       "main": [
         [
           {
-            "node": "Generate weekly report PDF",
+            "node": "Combine both metric sources",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Generate weekly report PDF": {
+    "Fetch satisfaction scores": {
+      "main": [
+        [
+          {
+            "node": "Combine both metric sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Combine both metric sources": {
+      "main": [
+        [
+          {
+            "node": "Validate and build the weekly report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and build the weekly report": {
+      "main": [
+        [
+          {
+            "node": "Are both sources complete?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Are both sources complete?": {
+      "main": [
+        [
+          {
+            "node": "Generate the weekly report PDF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email a data-gap notice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate the weekly report PDF": {
       "main": [
         [
           {
             "node": "Email the report to the team",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Archive the report in Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email the report to the team": {
+      "main": [
+        [
+          {
+            "node": "Wait for email and archive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archive the report in Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Wait for email and archive",
+            "type": "main",
+            "index": 1
           }
         ]
       ]

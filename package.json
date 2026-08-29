@@ -38,6 +38,7 @@
     "verify:gallery-scope": "node scripts/verify-gallery-scope.mjs",
     "verify:gallery-02": "node gallery-v2/_build-02.mjs && node gallery-v2/_test-02.mjs",
     "verify:gallery-03": "node gallery-v2/_test-03.mjs",
+    "verify:gallery-04": "node gallery-v2/_build-04.mjs && node gallery-v2/_test-04.mjs",
     "verify:gallery-05": "node gallery-v2/_build-05.mjs && node gallery-v2/_test-05.mjs",
     "prepublishOnly": "npm run build && npm run lint:prepublish"
   },
