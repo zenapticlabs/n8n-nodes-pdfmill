@@ -31,7 +31,8 @@ data-gap notice naming what was missing instead of publishing an incomplete repo
 
 ### Requirements
 
-- A pdfmill account and API key (the community node is self-hosted only).
+- This template uses the **pdfmill community node**, which installs on self-hosted n8n.
+- A pdfmill account and API key.
 - Gmail and Google Drive credentials.
 - An API that answers `GET /service-desk/tickets` and `GET /service-desk/satisfaction` with `start`
   and `end` query parameters, returning `ticketsOpened`, `ticketsResolved`, `firstResponseMinutes`,
