@@ -16,7 +16,7 @@ approved-template complexity floor below before treating any file as submission-
 | `04-scheduled-weekly-report.json` | report       | Weekly **Schedule Trigger** → **HTTP** metrics pull → aggregate (KPIs/deltas/table) → Generate PDF → email                    |
 | `05-order-to-packing-slip.json`   | packing-slip | Store-order webhook → validate the **whole order** → price-free PDF → direct Gmail + Drive branches → wait/join → 200/400     |
 
-## Status (2026-08-26)
+## Status (2026-08-27)
 
 - `01-order-to-invoice.json` is **LIVE** as n8n workflow
   [17604](https://n8n.io/workflows/17604/) after passing human review.
@@ -47,8 +47,9 @@ approved-template complexity floor below before treating any file as submission-
   It passed the n8n 2.36.6 canvas gate (5 stickies, 0 clipped, 276px minimum headroom), live-engine PDF
   inspection, and isolated configured QA (0 node issues, two-row Sheets read, disposable Drive
   upload/delete). The gallery JSON remains credential- and resource-ID-free.
-- `05-order-to-packing-slip.json` is **SUBMITTED AND UNDER HUMAN REVIEW** as Creator workflow
-  [18743](https://creators.n8n.io/workflows/18743/edit). Its deterministic nine-node build validates order identity, dates, the warehouse mailbox, both shipping addresses,
+- `05-order-to-packing-slip.json` is **LIVE** as n8n workflow
+  [18743](https://n8n.io/workflows/18743-issue-warehouse-packing-slips-with-pdfmill-gmail-and-google-drive/).
+  Its deterministic nine-node build validates order identity, dates, the warehouse mailbox, both shipping addresses,
   and every line item's SKU, description, and positive integer quantity before any side effect. One
   malformed field returns one 400 response. Source prices never reach the normalized packing-slip
   data. The pdfmill `data` binary fans directly to Gmail and Drive, and a Merge waits for both before
@@ -61,11 +62,11 @@ approved-template complexity floor below before treating any file as submission-
   33,330-byte, one-page portrait A4 packing slip with three SKUs and six physical units. Canvas and
   artifact evidence is retained by the publishing program separately from this standalone package
   repository. Gmail and Drive were not executed. The human uploaded the committed credential-free JSON and submitted it on
-  2026-08-26. The portal returned HTTP 200 for both AI-review creation and final submission, reported
-  15 total nodes, and set `reviewStatus: in_review`; the dashboard lists **Pending — Under review**.
-  The exact submitted title, description, artifact hash, and portal response are retained in the
-  publishing program's review record.
-- Published `01`, `02`, and `03`, plus submitted `05`, pass the approved-template complexity floor.
+  2026-08-26. On 2026-08-27 the public page returned HTTP 200 under its published slug and the
+  template API returned the same 15-node, nine-edge workflow under this creator, published with the
+  submitted title. The exact submitted title, description, artifact hash, and portal response are
+  retained in the publishing program's review record.
+- Published `01`, `02`, `03`, and `05` pass the approved-template complexity floor.
   `04` fails and is **not submittable as-is**.
 
 n8n allows only one template under review at a time. Queue submissions, but do not submit another file
