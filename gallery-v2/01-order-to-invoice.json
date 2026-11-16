@@ -104,7 +104,7 @@
       "typeVersion": 2.1,
       "position": [
         1300,
-        880
+        800
       ]
     },
     {
@@ -132,14 +132,30 @@
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        1600,
+        1300,
+        1060
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "chooseBranch",
+        "numberInputs": 2,
+        "chooseBranchMode": "waitForAll",
+        "output": "empty"
+      },
+      "id": "ac8f8f40-9c54-43c3-83ca-41cd2401f846",
+      "name": "Wait for email and archive",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1620,
         880
       ]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { \"invoiceNumber\": $('Build & total the invoice').item.json.invoiceNumber, \"total\": $('Build & total the invoice').item.json.total, \"currency\": $('Build & total the invoice').item.json.currency, \"status\": \"invoiced\" } }}",
+        "responseBody": "={{ { \"invoiceNumber\": $('Build & total the invoice').first().json.invoiceNumber, \"total\": $('Build & total the invoice').first().json.total, \"currency\": $('Build & total the invoice').first().json.currency, \"status\": \"invoiced\" } }}",
         "options": {}
       },
       "id": "77777777-7777-4777-8777-777777777777",
@@ -170,7 +186,7 @@
     },
     {
       "parameters": {
-        "content": "## 🧾 Order → branded invoice PDF (email + archive)\n\n**Who it's for:** anyone taking orders or payments (Stripe, Shopify, a form, your own app) who needs a branded PDF invoice sent automatically — no design tool, no headless Chrome to host.\n\n**What it does:** receives an order over a webhook, builds a real invoice (computes subtotal, tax and total from the line items), renders a branded PDF with **pdfmill**, emails it to the customer, and archives a copy to Google Drive.\n\n**How it works**\n1. **Webhook** receives the order payload.\n2. **Code** validates it and computes the invoice — number, dates, subtotal, tax, total.\n3. **IF** rejects invalid orders with a 400.\n4. **pdfmill** renders the Invoice template to PDF.\n5. **Gmail** emails it; **Google Drive** archives it.\n6. The workflow responds with the invoice number + total.\n\n**Setup**\n1. Add a **pdfmill** credential to the Generate node (API key at pdfmill.dev → API Keys) and pick the **Invoice** template.\n2. Add **Gmail** and **Google Drive** credentials.\n3. Point your store / payment webhook at this workflow's Production URL.",
+        "content": "## 🧾 Order → branded invoice PDF (email + archive)\n\n**Who it's for:** anyone taking orders or payments (Stripe, Shopify, a form, your own app) who needs a branded PDF invoice sent automatically — no design tool, no headless Chrome to host.\n\n**What it does:** receives an order over a webhook, builds a real invoice (computes subtotal, tax and total from the line items), renders a branded PDF with **pdfmill**, emails it to the customer, and archives a copy to Google Drive.\n\n**How it works**\n1. **Webhook** receives the order payload.\n2. **Code** validates it and computes the invoice — number, dates, subtotal, tax, total.\n3. **IF** rejects invalid orders with a 400.\n4. **pdfmill** renders the Invoice template to PDF.\n5. **Gmail** emails it and **Google Drive** archives the same PDF on direct branches.\n6. **Merge** waits for both deliveries, then the workflow responds with the invoice number + total.\n\n**Setup**\n1. Add a **pdfmill** credential to the Generate node (API key at pdfmill.dev → API Keys) and pick the **Invoice** template.\n2. Add **Gmail** and **Google Drive** credentials.\n3. Point your store / payment webhook at this workflow's Production URL.",
         "height": 640,
         "width": 900
       },
@@ -217,8 +233,8 @@
     },
     {
       "parameters": {
-        "content": "## 3. Deliver & respond\nEmails the PDF to the customer, archives a copy to Google Drive, and returns the invoice number + total to the caller.",
-        "height": 360,
+        "content": "## 3. Email, archive, then respond\nThe PDF feeds Gmail and Google Drive directly, so both receive the same document. A Merge waits for both deliveries before the invoice number + total are returned to the caller.",
+        "height": 540,
         "width": 880,
         "color": 7
       },
@@ -312,13 +328,7 @@
             "node": "Email the invoice to the customer",
             "type": "main",
             "index": 0
-          }
-        ]
-      ]
-    },
-    "Email the invoice to the customer": {
-      "main": [
-        [
+          },
           {
             "node": "Archive the invoice to Google Drive",
             "type": "main",
@@ -327,7 +337,29 @@
         ]
       ]
     },
+    "Email the invoice to the customer": {
+      "main": [
+        [
+          {
+            "node": "Wait for email and archive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Archive the invoice to Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Wait for email and archive",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Wait for email and archive": {
       "main": [
         [
           {
