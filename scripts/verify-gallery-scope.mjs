@@ -45,7 +45,8 @@ const candidates = process.argv
   .filter((path) => path !== '--')
   .map((path) => resolve(process.cwd(), path));
 const paths = candidates.length > 0 ? candidates : defaultCandidates;
-const baseline = await measure(baselinePath);
+// Freeze the human-approved 2026-08-23 floor. Delivery fixes may add nodes to 01.
+const baseline = { path: baselinePath, functionalNodes: 8, branchPoints: 1 };
 let failed = false;
 
 console.log(

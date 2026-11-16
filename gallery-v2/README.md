@@ -10,16 +10,20 @@ approved-template complexity floor below before treating any file as submission-
 
 | File                              | Doc type     | Shape                                                                                                                         |
 | --------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `01-order-to-invoice.json`        | invoice      | Order webhook → validate + compute totals → IF guard → Generate PDF → email customer + archive to Drive → structured 200/400  |
+| `01-order-to-invoice.json`        | invoice      | Order webhook → validate + compute totals → IF guard → Generate PDF → direct Gmail + Drive branches → wait/join → structured 200/400  |
 | `02-cohort-to-certificates.json`  | certificate  | Cohort webhook → validate the **whole roster** → fan-out → Generate PDF → direct Gmail + Drive branches → wait/join → 200/400 |
 | `03-form-to-report.json`          | report       | n8n **Form Trigger** → validate → Sheets lookup → aggregate/no-data branch → Generate PDF → Drive + email                     |
 | `04-scheduled-weekly-report.json` | report       | Weekly **Schedule Trigger** → previous-ISO-week window → **two parallel HTTP sources** → Merge → reconcile → complete/data-gap branch → Generate PDF → Gmail + Drive → wait/join |
 | `05-order-to-packing-slip.json`   | packing-slip | Store-order webhook → validate the **whole order** → price-free PDF → direct Gmail + Drive branches → wait/join → 200/400     |
 
-## Status (2026-08-27)
+## Status
 
 - `01-order-to-invoice.json` is **LIVE** as n8n workflow
-  [17604](https://n8n.io/workflows/17604/) after passing human review.
+  [17604](https://n8n.io/workflows/17604/) after passing human review. The source delivery fix now
+  feeds the PDF directly to Gmail and Drive and waits for both receipts before responding. Gmail
+  returns message metadata rather than forwarding the input binary, so Drive needs its own PDF
+  branch. `node gallery-v2/_test-01.mjs` checks that delivery contract and the invoice totals.
+  Updating the published gallery copy remains a human release step.
 - `02-cohort-to-certificates.json` is **LIVE** as n8n workflow
   [18709](https://n8n.io/workflows/18709-issue-cohort-completion-certificates-with-pdfmill-gmail-and-google-drive/).
   Its reproducible nine-node build rejects the
@@ -98,7 +102,7 @@ batch fan-out/iteration, stateful decision/update, approval, or named retry/erro
 
 | File                              | Functional nodes | Gate                      | Reason                                                                              |
 | --------------------------------- | ---------------: | ------------------------- | ----------------------------------------------------------------------------------- |
-| `01-order-to-invoice.json`        |                8 | ✅ approved control       | validation + IF + success/error + Gmail/Drive                                       |
+| `01-order-to-invoice.json`        |                9 | ✅ source delivery fix    | validation + IF + direct Gmail/Drive + wait-both + success/error                                       |
 | `02-cohort-to-certificates.json`  |                9 | ✅ pass after remediation | strict whole-roster validation + IF + direct binary fan-out + Merge + success/error |
 | `03-form-to-report.json`          |               11 | ✅ pass after redesign    | request validation + Sheets lookup + no-data branch + PDF/Drive/Gmail               |
 | `04-scheduled-weekly-report.json` |               12 | ✅ pass after redesign    | window + two parallel sources + merge + reconciliation + data-gap branch + fan-out  |
@@ -112,7 +116,9 @@ npm run verify:gallery-scope
 npm run verify:gallery-scope -- gallery-v2/02-cohort-to-certificates.json
 ```
 
-It compares functional-node and branch-point counts against `01`. Passing prevents the obvious repeat;
+It compares functional-node and branch-point counts against the approved `01` floor
+(8 functional nodes and 1 branch point), frozen before the delivery fix added its wait node.
+Passing prevents the obvious repeat;
 it does not replace the human substantiality review in `n8n-publish`.
 
 ### Review history / lessons folded into the queue

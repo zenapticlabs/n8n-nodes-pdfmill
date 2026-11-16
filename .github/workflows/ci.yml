@@ -24,6 +24,7 @@ jobs:
       - run: npm run build
       - name: Verify gallery candidates
         run: |
+          node gallery-v2/_test-01.mjs
           npm run verify:gallery-02
           npm run verify:gallery-03
           npm run verify:gallery-05
